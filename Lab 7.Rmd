@@ -1,0 +1,310 @@
+---
+title: "Lab 7"
+author: "Chris Okura"
+date: "11/12/2021"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include = FALSE}
+library(kknn)
+library(tidymodels)
+library(yardstick)
+library(tidyverse)
+library(pROC)
+```
+
+```{r message = FALSE}
+ins <- read_csv("https://www.dropbox.com/s/aohbr6yb9ifmc8w/heart_attack.csv?dl=1")
+ins$output <- as.factor(ins$output)
+head(ins)
+summary(ins)
+```
+
+## Part One: Fitting Models
+### Q1: KNN
+### KNN Model 1
+```{r warning = FALSE}
+knn_mod <- nearest_neighbor(neighbors = 5) %>%
+  set_engine("kknn") %>%
+  set_mode("classification")
+
+knn_fit_1 <- knn_mod %>%
+  fit(output ~ age + chol + trtbps, data = ins) 
+knn_fit_1$fit %>% summary()
+
+
+pred_knn1 <- data.frame(knn_fit_1 %>% predict(ins))
+ins <- ins %>%
+  mutate(
+    pred_knn_1 = pred_knn1[,1]
+  )
+
+cm1 <- ins %>%
+  count(output, pred_knn_1)
+cm1 <- cm1 %>% pivot_wider(names_from = pred_knn_1, values_from = n)
+cm1
+
+ins_cvs <- vfold_cv(ins, v = 10)
+knn_fit_1_cv <- knn_mod %>%
+  fit_resamples(output ~ age + chol + trtbps,
+                resamples = ins_cvs)
+knn_fit_1_cv %>%
+  collect_metrics()
+```
+### KNN Model 2
+```{r warning = FALSE}
+knn_fit_2 <- knn_mod %>%
+  fit(output ~ age + chol + trtbps + cp, data = ins) %>%
+  step_dummy(cp)
+knn_fit_2$fit %>% summary()
+
+pred_knn2 <- data.frame(knn_fit_2 %>% predict(ins))
+ins <- ins %>%
+  mutate(
+    pred_knn_2 = pred_knn2[,1]
+  )
+
+cm2 <- ins %>%
+  count(output, pred_knn_2)
+cm2 <- cm2 %>% pivot_wider(names_from = pred_knn_2, values_from = n)
+cm2
+
+ins_cvs <- vfold_cv(ins, v = 10)
+knn_fit_2_cv <- knn_mod %>%
+  fit_resamples(output ~ age + chol + trtbps + cp,
+  resamples = ins_cvs) %>%
+  step_dummy(cp)
+
+knn_fit_2_cv %>%
+  collect_metrics()
+```
+
+### KNN Model 3
+```{r warning = FALSE}
+knn_fit_3 <- knn_mod %>%
+  fit(output ~ age + chol + trtbps + cp + restecg, data = ins) %>%
+  step_dummy(cp)
+knn_fit_3$fit %>% summary()
+
+pred_knn3 <- data.frame(knn_fit_3 %>% predict(ins))
+ins <- ins %>%
+  mutate(
+    pred_knn_3 = pred_knn3[,1]
+  )
+
+cm3 <- ins %>%
+  count(output, pred_knn_3)
+cm3 <- cm3 %>% pivot_wider(names_from = pred_knn_3, values_from = n)
+cm3
+
+ins_cvs <- vfold_cv(ins, v = 10)
+knn_fit_3_cv <- knn_mod %>%
+  fit_resamples(output ~ age + chol + trtbps + cp + restecg,
+  resamples = ins_cvs) %>%
+  step_dummy(cp)
+knn_fit_3_cv %>%
+  collect_metrics()
+```
+
+### Q2: Logistic Regression
+### Logistic Model 1
+```{r warning = FALSE}
+logit_mod <- logistic_reg() %>%
+  set_mode("classification") %>%
+  set_engine("glm")
+
+ins_rec <- recipe(output ~ age + chol + trtbps, data = ins) %>%
+  step_normalize(all_numeric())
+
+ins_wflow_logit <- workflow() %>%
+  add_recipe(ins_rec) %>%
+  add_model(logit_mod)
+
+ins_fit <- ins_wflow_logit %>%
+  fit(ins)
+
+ins_fit %>% extract_fit_parsnip()
+
+pred_log_1 <- data.frame(ins_fit %>% predict(ins))
+
+ins <- ins %>%
+  mutate(
+    pred_log_1 = pred_log_1[,1]
+  )
+
+cm_log_1 <- ins %>%
+  count(output, pred_log_1)
+cm_log_1 <- cm_log_1 %>% pivot_wider(names_from = pred_log_1, values_from = n)
+cm_log_1
+
+ins_cvs <- vfold_cv(ins, v = 10)
+log_fit_1_cv <- ins_fit %>%
+  fit_resamples(output ~ age + chol + trtbps,
+                resamples = ins_cvs)
+log_fit_1_cv %>%
+  collect_metrics()
+
+```
+### Logistic Model 2
+```{r warning = FALSE}
+ins_rec <- recipe(output ~ age + chol + trtbps + cp, data = ins) %>%
+  step_normalize(all_numeric())
+
+ins_wflow_logit <- workflow() %>%
+  add_recipe(ins_rec) %>%
+  add_model(logit_mod)
+
+ins_fit <- ins_wflow_logit %>%
+  fit(ins)
+
+ins_fit %>% extract_fit_parsnip()
+
+pred_log_2 <- data.frame(ins_fit %>% predict(ins))
+
+ins <- ins %>%
+  mutate(
+    pred_log_2 = pred_log_2[,1]
+  )
+
+cm_log_2 <- ins %>%
+  count(output, pred_log_2)
+cm_log_2 <- cm_log_2 %>% pivot_wider(names_from = pred_log_2, values_from = n)
+cm_log_2
+
+ins_cvs <- vfold_cv(ins, v = 10)
+log_fit_2_cv <- ins_fit %>%
+  fit_resamples(output ~ age + chol + trtbps + cp + restecg,
+                resamples = ins_cvs)
+log_fit_2_cv %>%
+  collect_metrics()
+```
+
+
+### Q3: Interpretation
+The two predictors that are most important to predicting a heart attack are cholesterol and resting blood pressure. 
+
+ROC curve of KNN Model 
+
+```{r}
+pred_knn_prob3 <- data.frame(knn_fit_3 %>% predict(ins, type = 'prob'))[, 2]
+ins <- cbind(ins, pred_knn_prob3)
+plot(roc(ins$output, ins[, 14])) 
+
+```
+
+
+
+ROC curve of logistic model
+```{r}
+pred_log_2_prob <- data.frame(ins_fit %>% predict(ins, type = "prob"))[, 2]
+ins <- cbind(ins, pred_log_2_prob)
+plot(roc(ins$output, ins[, 15])) 
+
+```
+### Part Two: Metrics
+
+True Positive, Precision and True Negative Rate of the KNN model
+
+```{r}
+get_metrics <- function(conf_mat) {
+  true_positive <- conf_mat[2, 3]
+  positive <- sum(conf_mat[2, 2:3])
+  true_pos_rate <- true_positive / positive
+  precision <- conf_mat[2, 3] / sum(conf_mat[, 3])
+  classified_negative <- sum(conf_mat[, 2])
+  true_neg_rate <- conf_mat[1, 2] / classified_negative
+  print(true_pos_rate)
+  print(precision)
+  print(true_neg_rate)
+}
+
+get_metrics(cm3)
+
+```
+
+True Positive of the KNN Model - 88.4%
+Precision of the KNN Model - 91.5%
+True Negative Rate of the KNN Model - 87.1%
+
+True Positive, Precision and True Negative Rate of the logistic model
+```{r}
+
+get_metrics(cm_log_1)
+```
+
+True Positive of the Logistic Model - 70.5%
+Precision of the Logistic Model - 65.2%
+True Negative Rate of the Logistic Model - 62.6%
+
+# Part Three: Discussion
+### Q1 The hospital faces severe lawsuits if they deem a patient to be low risk, and that patient later experiences a heart attack.
+
+We want to use the model with the highest true negative rate to avoide the situation where a patient is deemed to be low risk, but later experiences a heart attack. I would use the KNN model with age, chol, trtbps, cp, and restecg as the predictor variables. I would expect an 87% true negative rate from this model. 
+
+### Q2 The hospital is overfull, and wants to only use bed space for patients most in need of monitoring due to heart attack risk.
+I would use the model with the highest precision rate. In this case we will use the KNN model. I would expect a 91.5% precision rate from this model
+
+### Q3 The hospital is studying root causes of heart attacks, and would like to understand which biological measures are associated with heart attack risk
+I would look at the coefficients of the logistic models to determine what factors are important. I would compare adjusted r-squared and AIC to choose a final model. 
+
+### Q4 The hospital is training a new batch of doctors, and they would like to compare the diagnoses of these doctors to the predictions given by the algorithm to measure the ability of new doctors to diagnose patients.
+I would compare the new doctor's predictions to the model predictions using mean square error. I would use the KNN model to compare predictions because in this situation it's more accurate. 
+
+# Part Four: Validation
+
+```{r}
+ha_validation <- read_csv("https://www.dropbox.com/s/jkwqdiyx6o6oad0/heart_attack_validation.csv?dl=1")
+```
+
+```{r}
+pred_knn_3 <- knn_fit_3 %>% predict(ha_validation)
+a <- cbind(ha_validation$output, pred_knn_3) %>%
+  group_by(ha_validation$output, .pred_class) %>%
+  summarize(n())
+names(a) <- c("output", "prediction", "count")
+a <- a %>%
+  pivot_wider(names_from = prediction, values_from = count)
+a 
+get_metrics(a)
+```
+True Positive of the KNN Model on validation data - 73.6%
+Precision of the KNN Model on validation data - 77.8%
+True Negative Rate of the KNN Model on validation data - 58.3%
+
+```{r}
+pred_log_2 <- data.frame(ins_fit %>% predict(ha_validation))
+a <- cbind(ha_validation$output, pred_log_2) %>%
+  group_by(ha_validation$output, .pred_class) %>%
+  summarize(n())
+names(a) <- c("output", "prediction", "count")
+a <- a %>%
+  pivot_wider(names_from = prediction, values_from = count)
+a 
+get_metrics(a)
+```
+True Positive of the Logistic Model on validation data - 73.6%
+Precision of the Logistic Model on validation data - 93.3%
+True Negative Rate of the Logistic Model on validation data - 66.7%
+
+On the validation data, the logistic model performed better, which is the opposite of what we saw from part one. 
+
+### Challenge: Cohen’s Kappa
+
+Kappa for the logistic model 
+```{r}
+library(irr)
+kappa2(cbind(pred_log_2, ha_validation$output), weight = "unweighted", sort.levels = FALSE)
+```
+
+Kappa for the KNN model 
+```{r}
+kappa2(cbind(pred_knn_3, ha_validation$output), weight = "unweighted", sort.levels = FALSE)
+```
+The Kappa statistic may me more reliable because it takes into account chance agreement due to guessing. Using the Kappa value our prediction is the same. 
